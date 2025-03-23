@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blaze Studio</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background: #1a1a1a; color: #fff; }
+        .container { max-width: 100%; text-align: center; }
+        .popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #333; padding: 15px; border: 1px solid #555; box-shadow: 0 0 10px rgba(0,0,0,0.5); z-index: 1000; width: 90%; max-width: 300px; }
+        .settings, .stream-screen, .overlay-manage, .screen-broadcast { margin-top: 20px; }
+        .video-container { position: relative; width: 100%; height: 200px; background: #000; overflow: hidden; border: 2px solid #ff4500; }
+        .preview-container { position: relative; width: 100%; background: #333; aspect-ratio: 1 / 2; margin: 0 auto; }
+        .overlay { position: absolute; color: #fff; background: rgba(0, 0, 0, 0.7); padding: 5px; font-size: 14px; }
+        #text-overlay-top { top: 5px; left: 5px; }
+        #text-overlay-bottom { bottom: 5px; right: 5px; }
+        #image-overlay { top: 5px; right: 5px; max-width: 50px; }
+        #chat-box, #stats-box { height: 80px; overflow-y: scroll; border: 1px solid #555; margin-top: 10px; padding: 5px; font-size: 12px; background: #333; }
+        button, select, input { padding: 8px; margin: 5px; font-size: 14px; width: 90%; max-width: 250px; background: #ff4500; color: #fff; border: none; border-radius: 5px; }
+        button:hover { background: #ff6700; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        .top-bar { background: #333; padding: 10px; text-align: left; }
+        .top-bar button { width: auto; padding: 5px 10px; font-size: 12px; }
+        .indicator { background: red; width: 20px; height: 20px; border-radius: 50%; margin-right: 10px; }
+        .timer { font-size: 32px; font-weight: bold; color: #fff; margin: 45px 0; }
+        .description { font-size: 13px; color: #aaaaaa; margin: 20px 0; width: 80%; margin-left: auto; margin-right: auto; line-height: 1.4; }
+        @media (orientation: portrait) { .video-container, .preview-container { aspect-ratio: 9 / 16; } }
+        @media (orientation: landscape) { .video-container, .preview-container { aspect-ratio: 16 / 9; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="font-size: 20px;">Blaze Studio</h1>
+        <button onclick="showPopup()">Go Live (Camera)</button>
+        <button onclick="showScreenBroadcast()">Screen Broadcast</button>
+        <button onclick="showOverlayManage()">Manage Overlays</button>
+
+        <!-- Camera Streaming Popup -->
+        <div id="rtmp-popup" class="popup">
+            <h2 style="font-size: 16px;">Stream Setup (Camera)</h2>
+            <input type="text" id="rtmp-url" placeholder="RTMP URL (e.g., rtmp://a.rtmp.youtube.com/live2)"><br>
+            <input type="text" id="stream-key" placeholder="Stream Key (e.g., abcd-1234-xyz)"><br>
+            <input type="text" id="api-key" placeholder="YouTube API Key"><br>
+            <input type="text" id="channel-id" placeholder="YouTube Channel ID"><br>
+            <button onclick="startCameraStreaming()">Start Streaming</button>
+            <p id="error-message" style="color: #ff4500; font-size: 12px;"></p>
+        </div>
+
+        <!-- Screen Broadcasting Screen -->
+        <div class="screen-broadcast" id="screen-broadcast" style="display: none;">
+            <div class="top-bar">
+                <button onclick="goBack()">Back</button>
+            </div>
+            <div class="preview-container">
+                <video id="screen-stream" autoplay playsinline></video>
+                <div style="display: flex; align-items: center; justify-content: center;">
+                    <div class="indicator" id="record-indicator"></div>
+                    <div class="timer" id="timer">00:00</div>
+                </div>
+            </div>
+            <div class="description" id="broadcast-status">Your screen is being broadcast.</div>
+            <div id="stats-box">Stream stats will appear here...</div>
+            <button id="broadcast-button" onclick="toggleScreenBroadcast()">Start Broadcast</button>
+        </div>
+
+        <!-- Camera Streaming Settings -->
+        <div class="settings">
+            <h2 style="font-size: 16px;">Stream Settings</h2>
+            <label>Quality:</label>
+            <select id="quality">
+                <option value="720p">720p (1280x720)</option>
+                <option value="1080p">1080p (1920x1080)</option>
+                <option value="1440p">1440p (2560x1440)</option>
+            </select><br>
+            <label>Frame Rate:</label>
+            <select id="frame-rate">
+                <option value="30">30fps</option>
+                <option value="60">60fps</option>
+            </select><br>
+            <label>Bitrate (kbps):</label>
+            <input type="number" id="bitrate" value="3000"><br>
+            <label>Sub Goal:</label>
+            <input type="number" id="sub-goal" placeholder="e.g., 1000"><br>
+        </div>
+
+        <!-- Overlay Management -->
+        <div class="overlay-manage" id="overlay-manage" style="display: none;">
+            <h2 style="font-size: 16px;">Manage Overlays</h2>
+            <label>Overlay Text:</label>
+            <input type="text" id="custom-text" placeholder="e.g., Blaze Live!"><br>
+            <label>Upload Overlay Image:</label>
+            <input type="file" id="image-upload" accept="image/*" onchange="uploadImage()">
+        </div>
+
+        <!-- Camera Streaming Screen -->
+        <div class="stream-screen" id="stream-screen" style="display: none;">
+            <h2 style="font-size: 16px;">Live Now (Camera)</h2>
+            <div class="video-container">
+                <video id="video-stream" autoplay playsinline></video>
+                <div id="text-overlay-top" class="overlay"></div>
+                <img id="image-overlay" class="overlay" src="" style="display: none;">
+                <div id="text-overlay-bottom" class="overlay">Goal: <span id="goal-display">1000</span> Subs</div>
+            </div>
+            <p>Subs: <span id="sub-count">0</span></p>
+            <div id="chat-box"></div>
+        </div>
+    </div>
+
+    <script>
+        let cameraStream, screenStream;
+        let isBroadcasting = false;
+        let timerInterval;
+        const ws = new WebSocket('wss://' + window.location.host);
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'chat') {
+                const chatBox = document.getElementById('chat-box');
+                chatBox.innerHTML += `<p>${data.message}</p>`;
+                if (data.message.toLowerCase() === 'hi') {
+                    chatBox.innerHTML += `<p><b>BlazeBot:</b> Yo, what’s up? Thanks for watching!</p>`;
+                }
+                chatBox.scrollTop = chatBox.scrollHeight;
+            } else if (data.type === 'subCount') {
+                document.getElementById('sub-count').textContent = data.count;
+            } else if (data.type === 'stats') {
+                const statsBox = document.getElementById('stats-box');
+                statsBox.innerHTML = `Viewers: ${data.viewers || 0}<br>Bitrate: ${data.bitrate || 0} kbps`;
+            }
+        };
+
+        function showPopup() {
+            document.getElementById('rtmp-popup').style.display = 'block';
+            document.getElementById('overlay-manage').style.display = 'none';
+            document.getElementById('stream-screen').style.display = 'none';
+            document.getElementById('screen-broadcast').style.display = 'none';
+        }
+
+        function showOverlayManage() {
+            document.getElementById('overlay-manage').style.display = 'block';
+            document.getElementById('rtmp-popup').style.display = 'none';
+            document.getElementById('stream-screen').style.display = 'none';
+            document.getElementById('screen-broadcast').style.display = 'none';
+        }
+
+        function showScreenBroadcast() {
+            document.getElementById('screen-broadcast').style.display = 'block';
+            document.getElementById('rtmp-popup').style.display = 'none';
+            document.getElementById('overlay-manage').style.display = 'none';
+            document.getElementById('stream-screen').style.display = 'none';
+        }
+
+        function goBack() {
+            document.getElementById('screen-broadcast').style.display = 'none';
+            if (isBroadcasting) {
+                toggleScreenBroadcast(); // Stop broadcasting if going back
+            }
+        }
+
+        async function startCameraStreaming() {
+            const rtmpUrl = document.getElementById('rtmp-url').value;
+            const streamKey = document.getElementById('stream-key').value;
+            const apiKey = document.getElementById('api-key').value;
+            const channelId = document.getElementById('channel-id').value;
+            const quality = document.getElementById('quality').value;
+            const frameRate = document.getElementById('frame-rate').value;
+            const bitrate = document.getElementById('bitrate').value;
+            const errorMessage = document.getElementById('error-message');
+
+            if (!rtmpUrl || !streamKey || !apiKey || !channelId) {
+                errorMessage.textContent = "Fill in all fields, bro!";
+                return;
+            }
+
+            document.getElementById('rtmp-popup').style.display = 'none';
+            document.getElementById('stream-screen').style.display = 'block';
+
+            const customText = document.getElementById('custom-text').value || "Blaze Live!";
+            document.getElementById('text-overlay-top').textContent = customText;
+
+            const goal = document.getElementById('sub-goal').value || 1000;
+            document.getElementById('goal-display').textContent = goal;
+
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: quality === '720p' ? 1280 : quality === '1080p' ? 1920 : 2560, height: quality === '720p' ? 720 : quality === '1080p' ? 1080 : 1440, frameRate: parseInt(frameRate) },
+                    audio: true
+                });
+                const videoElement = document.getElementById('video-stream');
+                videoElement.srcObject = cameraStream;
+
+                ws.send(JSON.stringify({
+                    type: 'startCameraStream',
+                    rtmp: `${rtmpUrl}/${streamKey}`,
+                    quality,
+                    frameRate: parseInt(frameRate),
+                    bitrate: parseInt(bitrate),
+                    apiKey,
+                    channelId
+                }));
+            } catch (err) {
+                alert("Camera/mic issue: " + err.message);
+            }
+        }
+
+        async function toggleScreenBroadcast() {
+            const rtmpUrl = document.getElementById('rtmp-url').value;
+            const streamKey = document.getElementById('stream-key').value;
+            const quality = document.getElementById('quality').value;
+            const frameRate = document.getElementById('frame-rate').value;
+            const bitrate = document.getElementById('bitrate').value;
+
+            if (!rtmpUrl || !streamKey) {
+                alert("Please set RTMP URL and Stream Key in the Camera Streaming section first!");
+                return;
+            }
+
+            if (!isBroadcasting) {
+                try {
+                    screenStream = await navigator.mediaDevices.getDisplayMedia({
+                        video: { width: quality === '720p' ? 1280 : quality === '1080p' ? 1920 : 2560, height: quality === '720p' ? 720 : quality === '1080p' ? 1080 : 1440, frameRate: parseInt(frameRate) },
+                        audio: true
+                    });
+                    const videoElement = document.getElementById('screen-stream');
+                    videoElement.srcObject = screenStream;
+
+                    ws.send(JSON.stringify({
+                        type: 'startScreenStream',
+                        rtmp: `${rtmpUrl}/${streamKey}`,
+                        quality,
+                        frameRate: parseInt(frameRate),
+                        bitrate: parseInt(bitrate)
+                    }));
+
+                    isBroadcasting = true;
+                    document.getElementById('broadcast-button').textContent = "Stop Broadcast";
+                    document.getElementById('record-indicator').style.background = 'red';
+
+                    let seconds = 0;
+                    timerInterval = setInterval(() => {
+                        seconds++;
+                        const minutes = Math.floor(seconds / 60);
+                        const secs = seconds % 60;
+                        document.getElementById('timer').textContent = `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                    }, 1000);
+                } catch (err) {
+                    alert("Screen sharing issue: " + err.message);
+                }
+            } else {
+                screenStream.getTracks().forEach(track => track.stop());
+                ws.send(JSON.stringify({ type: 'stopScreenStream' }));
+                isBroadcasting = false;
+                document.getElementById('broadcast-button').textContent = "Start Broadcast";
+                document.getElementById('record-indicator').style.background = 'gray';
+                clearInterval(timerInterval);
+                document.getElementById('timer').textContent = "00:00";
+            }
+        }
+
+        function uploadImage() {
+            const file = document.getElementById('image-upload').files[0];
+            const imageOverlay = document.getElementById('image-overlay');
+            if (file) {
+                imageOverlay.src = URL.createObjectURL(file);
+                imageOverlay.style.display = 'block';
+            }
+        }
+
+        window.onbeforeunload = () => {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                ws.send(JSON.stringify({ type: 'stopCameraStream' }));
+            }
+            if (screenStream) {
+                screenStream.getTracks().forEach(track => track.stop());
+                ws.send(JSON.stringify({ type: 'stopScreenStream' }));
+            }
+        };
+    </script>
+</body>
+</html>
